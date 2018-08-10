@@ -9,12 +9,11 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.widget.TextView;
 import android.widget.Toast;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -114,44 +113,48 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void recordSound(){
-        int sampleRateInHz = 11025;//8000 44100, 22050 and 11025 //picked 11025 based on high piano notes C7
-        int channelConfig = AudioFormat.CHANNEL_CONFIGURATION_MONO;
-        int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
-        int bufferSize = 2048;
-        short sData[] = new short[bufferSize/Short.BYTES];
-        double realout[] = new double[mymap.size()];
-        double imagout[] = new double[realout.length];
-        double magnitude[] = new double[realout.length]; //A1
-        double relative[] = new double[realout.length];
-        int count = 0;
-        ArrayList<Double> iter = new ArrayList<>(mymap.keySet());
-        for (int i=0; i < iter.size(); i++){
-            relative[count] = iter.get(i)/sampleRateInHz;
-            count++;
-        }
-        System.out.println("BEFORE");
-        AudioRecord recorder = new AudioRecord(
-                MediaRecorder.AudioSource.DEFAULT,
-                sampleRateInHz,
-                channelConfig,
-                audioFormat,
-                bufferSize
-        );
-        System.out.println("BEFORE2");
-        recorder.startRecording();
-        System.out.println("AFTER");
-        while (true) {
-            recorder.read(
-                    sData,
-                    0,
-                    sData.length
-            );
-            double doubleArray[] = new double[sData.length];
-            for (int i = 0; i < doubleArray.length; i++) {
-                doubleArray[i] = (double) sData[i];
-            }
-            computeDft(doubleArray, relative, realout, imagout, magnitude);
+    public void recordSound() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                int sampleRateInHz = 11025;//8000 44100, 22050 and 11025 //picked 11025 based on high piano notes C7
+                int channelConfig = AudioFormat.CHANNEL_CONFIGURATION_MONO;
+                int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+                int bufferSize = 2048;
+                short sData[] = new short[bufferSize / Short.BYTES];
+                double realout[] = new double[mymap.size()];
+                double imagout[] = new double[realout.length];
+                double magnitude[] = new double[realout.length]; //A1
+                double relative[] = new double[realout.length];
+                int count = 0;
+                ArrayList<Double> iter = new ArrayList<>(mymap.keySet());
+                for (int i = 0; i < iter.size(); i++) {
+                    relative[count] = iter.get(i) / sampleRateInHz;
+                    count++;
+                }
+                System.out.println("BEFORE");
+                AudioRecord recorder = new AudioRecord(
+                        MediaRecorder.AudioSource.DEFAULT,
+                        sampleRateInHz,
+                        channelConfig,
+                        audioFormat,
+                        bufferSize
+                );
+                System.out.println("BEFORE2");
+                recorder.startRecording();
+                System.out.println("AFTER");
+
+                while (true) {
+                    recorder.read(
+                            sData,
+                            0,
+                            sData.length
+                    );
+                    double doubleArray[] = new double[sData.length];
+                    for (int i = 0; i < doubleArray.length; i++) {
+                        doubleArray[i] = (double) sData[i];
+                    }
+                    computeDft(doubleArray, relative, realout, imagout, magnitude);
 
             /*System.out.print("OUTPUT: ");
             for (int i=0; i<magnitude.length; i++){
@@ -159,17 +162,33 @@ public class MainActivity extends AppCompatActivity {
             }
             System.out.println("");*/
 
-            double max = 0;
-            int highest = 0;
-            for (int i = 0; i < magnitude.length; i++) {
-                if (magnitude[i] > max) {
-                    max = magnitude[i];
-                    highest = i;
+                    double max = 0;
+                    int highest = 0;
+                    for (int i = 0; i < magnitude.length; i++) {
+                        if (magnitude[i] > max) {
+                            max = magnitude[i];
+                            highest = i;
+                        }
+                    }
+
+                    final double newFreq = iter.get(highest);
+                    final String note = (String) mymap.get(newFreq);
+                    //System.out.println(String.format("Frequency: %d Note: %s", newFreq, note));
+                    runOnUiThread(new Runnable() {
+
+                        @Override
+                        public void run() {
+
+                            TextView freqView = findViewById(R.id.freqView);
+                            TextView noteView = findViewById(R.id.noteView);
+                            freqView.setText(Double.toString(newFreq));
+                            noteView.setText(note);
+
+                        }
+                    });
                 }
             }
-            String note = (String) mymap.get(iter.get(highest));
-            System.out.println(note);
-        }
+        }).start();
     }
 
     @Override
