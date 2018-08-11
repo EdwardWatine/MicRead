@@ -18,7 +18,11 @@ import java.util.HashMap;
 public class MainActivity extends AppCompatActivity {
 
     private final int REQUEST_MICROPHONE = 1;
-    public final HashMap mymap = new HashMap(64, (float) 1);
+    private final double AVERAGE_THRESHOLD_CONSTANT = 0.8; //the higher the number the higher the sensitivity (0-1)
+                                                           //affected by background noise (works by magnitude)
+    private final double INTER_NOTE_CONSTANT = 0.75; //checks by a factor of this on either side of the note (normally between 0.5 and 1)
+                                                 //higher is less sensitive (mostly unaffected by background noise but can lead to ignoring note changes)
+    private final HashMap mymap = new HashMap(64, (float) 1);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -122,15 +126,17 @@ public class MainActivity extends AppCompatActivity {
                 int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
                 int bufferSize = 2048;
                 short sData[] = new short[bufferSize / Short.BYTES];
-                double realout[] = new double[mymap.size()];
-                double imagout[] = new double[realout.length];
-                double magnitude[] = new double[realout.length]; //A1
-                double relative[] = new double[realout.length];
-                int count = 0;
+                double magnitude[] = new double[mymap.size()]; //A1
+                double relativeFreq[] = new double[magnitude.length];
+                double relativeMag[] = new double[magnitude.length];
+                double freqList[] = new double[magnitude.length];
+                double lastFreq = -1;
+
                 ArrayList<Double> iter = new ArrayList<>(mymap.keySet());
+
                 for (int i = 0; i < iter.size(); i++) {
-                    relative[count] = iter.get(i) / sampleRateInHz;
-                    count++;
+                    relativeFreq[i] = iter.get(i) / sampleRateInHz;
+                    freqList[i] = Math.round(2750*Math.pow(2, i/12))/100;
                 }
                 System.out.println("BEFORE");
                 AudioRecord recorder = new AudioRecord(
@@ -154,7 +160,7 @@ public class MainActivity extends AppCompatActivity {
                     for (int i = 0; i < doubleArray.length; i++) {
                         doubleArray[i] = (double) sData[i];
                     }
-                    computeDft(doubleArray, relative, realout, imagout, magnitude);
+                    computeDft(doubleArray, relativeFreq, magnitude);
 
             /*System.out.print("OUTPUT: ");
             for (int i=0; i<magnitude.length; i++){
@@ -171,21 +177,54 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
 
-                    final double newFreq = iter.get(highest);
-                    final String note = (String) mymap.get(newFreq);
-                    //System.out.println(String.format("Frequency: %d Note: %s", newFreq, note));
-                    runOnUiThread(new Runnable() {
+                    double newFreq = iter.get(highest);
 
-                        @Override
-                        public void run() {
+                    double sum = 0;
+                    int freqIndex = 0;
 
-                            TextView freqView = findViewById(R.id.freqView);
-                            TextView noteView = findViewById(R.id.noteView);
-                            freqView.setText(Double.toString(newFreq));
-                            noteView.setText(note);
-
+                    for (int i=0; i < magnitude.length; i++){
+                        if (Math.abs(freqList[i]-newFreq)<1){
+                            freqIndex = i;
+                            newFreq = freqList[i];
                         }
-                    });
+                        relativeMag[i] = magnitude[i]/max;
+                        sum += relativeMag[i];
+                    }
+
+                    double average = sum/magnitude.length;
+                    if (lastFreq==-1){
+                        lastFreq = freqList[freqIndex];
+                    }
+                    if (average < AVERAGE_THRESHOLD_CONSTANT) {
+
+                        double upperFreq = freqList[Math.min(freqIndex+1, 63)];
+                        double lowerFreq = freqList[Math.max(freqIndex-1, 0)];
+                        if (lastFreq==upperFreq || lastFreq==lowerFreq) {
+                            double freqList1[] = {(newFreq + (lastFreq - newFreq) * (1 - INTER_NOTE_CONSTANT)) / sampleRateInHz};
+
+                            double mag1[] = new double[1];
+                            computeDft(doubleArray, freqList1, mag1);
+                            if (mag1[0] > max) {
+                                newFreq = lastFreq;
+                            }
+                        }
+                        final double finalFreq = newFreq;
+                        final String note = (String) mymap.get(newFreq);
+                        //System.out.println(String.format("Frequency: %d Note: %s", newFreq, note));
+                        runOnUiThread(new Runnable() {
+
+                            @Override
+                            public void run() {
+
+                                TextView freqView = findViewById(R.id.freqView);
+                                TextView noteView = findViewById(R.id.noteView);
+                                freqView.setText(Double.toString(finalFreq));
+                                noteView.setText(note);
+
+                            }
+                        });
+                    }
+                    lastFreq = freqList[freqIndex];
                 }
             }
         }).start();
@@ -213,7 +252,7 @@ public class MainActivity extends AppCompatActivity {
      * https://www.nayuki.io/page/how-to-implement-the-discrete-fourier-transform
      */
 
-    public static void computeDft(double[] inreal, double[] atf, double[] outreal, double[] outimag, double[] magnitude) {
+    public static void computeDft(double[] inreal, double[] atf, double[] magnitude) {
         int n = inreal.length;
         assert atf.length==magnitude.length;
         for (int k = 0; k < magnitude.length; k++) {  // For each output element
@@ -224,8 +263,6 @@ public class MainActivity extends AppCompatActivity {
                 sumreal +=  inreal[t] * Math.cos(angle) + inreal[t] * Math.sin(angle);
                 sumimag += -inreal[t] * Math.sin(angle) + inreal[t] * Math.cos(angle);
             }
-            outreal[k] = sumreal;
-            outimag[k] = sumimag;
             magnitude[k] = Math.sqrt(sumreal*sumreal+sumimag*sumimag);
 
         }
