@@ -5,6 +5,7 @@ import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.provider.ContactsContract;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -12,7 +13,11 @@ import android.os.Bundle;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.util.ArrayList;
+import com.jjoe64.graphview.GraphView;
+import com.jjoe64.graphview.GridLabelRenderer;
+import com.jjoe64.graphview.series.BarGraphSeries;
+import com.jjoe64.graphview.series.DataPoint;
+
 import java.util.HashMap;
 
 public class MainActivity extends AppCompatActivity {
@@ -23,13 +28,14 @@ public class MainActivity extends AppCompatActivity {
     private final double INTER_NOTE_CONSTANT = 0.75; //checks by a factor of this on either side of the note (normally between 0.5 and 1)
                                                  //higher is less sensitive (mostly unaffected by background noise but can lead to ignoring note changes)
     private final HashMap mymap = new HashMap(64, (float) 1);
+    private int NOTE_RANGE = 64;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mymap.put(27.50, "A0");
+        /*mymap.put(27.50, "A0");
         mymap.put(29.14, "A#0/Bb0");
         mymap.put(30.87, "B0");
         mymap.put(32.70, "C1");
@@ -104,7 +110,7 @@ public class MainActivity extends AppCompatActivity {
         mymap.put(1760.00, "A6");
         mymap.put(1864.66, "A#6/Bb6");
         mymap.put(1975.53, "B6");
-        mymap.put(2093.00, "C7");
+        mymap.put(2093.00, "C7");*/
 
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -126,17 +132,21 @@ public class MainActivity extends AppCompatActivity {
                 int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
                 int bufferSize = 2048;
                 short sData[] = new short[bufferSize / Short.BYTES];
-                double magnitude[] = new double[mymap.size()]; //A1
+                double magnitude[] = new double[NOTE_RANGE]; //A1
                 double relativeFreq[] = new double[magnitude.length];
                 double relativeMag[] = new double[magnitude.length];
                 double freqList[] = new double[magnitude.length];
                 double lastFreq = -1;
+                boolean graphInit = false;
+                BarGraphSeries<DataPoint> series = new BarGraphSeries<>(new DataPoint[0]);
 
-                ArrayList<Double> iter = new ArrayList<>(mymap.keySet());
+                String[] noteList = new String[] {"A", "A#/Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
 
-                for (int i = 0; i < iter.size(); i++) {
-                    relativeFreq[i] = iter.get(i) / sampleRateInHz;
-                    freqList[i] = Math.round(2750*Math.pow(2, i/12))/100;
+                for (int i = 0; i < magnitude.length; i++) {
+                    double current = Math.round(2750*Math.pow(2, i/12.0))/100.0;
+                    relativeFreq[i] = current / sampleRateInHz;
+                    freqList[i] = current;
+                    mymap.put(current, noteList[i%12]+((i+9)/12));
                 }
                 System.out.println("BEFORE");
                 AudioRecord recorder = new AudioRecord(
@@ -177,28 +187,23 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
 
-                    double newFreq = iter.get(highest);
+                    double newFreq = freqList[highest];
 
                     double sum = 0;
-                    int freqIndex = 0;
 
                     for (int i=0; i < magnitude.length; i++){
-                        if (Math.abs(freqList[i]-newFreq)<1){
-                            freqIndex = i;
-                            newFreq = freqList[i];
-                        }
                         relativeMag[i] = magnitude[i]/max;
                         sum += relativeMag[i];
                     }
 
                     double average = sum/magnitude.length;
                     if (lastFreq==-1){
-                        lastFreq = freqList[freqIndex];
+                        lastFreq = newFreq;
                     }
                     if (average < AVERAGE_THRESHOLD_CONSTANT) {
 
-                        double upperFreq = freqList[Math.min(freqIndex+1, 63)];
-                        double lowerFreq = freqList[Math.max(freqIndex-1, 0)];
+                        double upperFreq = freqList[Math.min(highest+1, 63)];
+                        double lowerFreq = freqList[Math.max(highest-1, 0)];
                         if (lastFreq==upperFreq || lastFreq==lowerFreq) {
                             double freqList1[] = {(newFreq + (lastFreq - newFreq) * (1 - INTER_NOTE_CONSTANT)) / sampleRateInHz};
 
@@ -224,7 +229,29 @@ public class MainActivity extends AppCompatActivity {
                             }
                         });
                     }
-                    lastFreq = freqList[freqIndex];
+                    lastFreq = freqList[highest];
+                    DataPoint[] newData = new DataPoint[NOTE_RANGE];
+                    for (int i=0;i<NOTE_RANGE;i++){
+                        newData[i] = new DataPoint(i, magnitude[i]);
+                    }
+                    if (!graphInit){
+                        GraphView graph = (GraphView) findViewById(R.id.graph);
+                        DataPoint[] graphData = new DataPoint[NOTE_RANGE];
+                        for (int i=0;i<NOTE_RANGE;i++){
+                            graphData[i] = new DataPoint(i, 0);
+                        }
+                        series = new BarGraphSeries<>(graphData);
+                        graph.addSeries(series);
+                        graph.getGridLabelRenderer().setGridStyle(GridLabelRenderer.GridStyle.NONE);
+                        graph.getGridLabelRenderer().setVerticalLabelsVisible(false);
+                        graph.getGridLabelRenderer().setHorizontalLabelsVisible(false);
+                        graph.getViewport().setXAxisBoundsManual(true);
+                        graph.getViewport().setMinX(0);
+                        graph.getViewport().setMaxX(NOTE_RANGE-1);
+
+                        graphInit = true;
+                    }
+                    series.resetData(newData);
                 }
             }
         }).start();

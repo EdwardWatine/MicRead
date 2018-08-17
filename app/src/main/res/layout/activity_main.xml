@@ -58,4 +58,12 @@
         app:autoSizeMinTextSize="60dp"
         app:layout_constraintBaseline_toBaselineOf="@+id/freqView"
         app:layout_constraintEnd_toEndOf="parent" />
+
+    <com.jjoe64.graphview.GraphView
+        android:id="@+id/graph"
+        android:layout_width="wrap_content"
+        android:layout_height="216dp"
+        android:layout_marginBottom="80dp"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
 </android.support.constraint.ConstraintLayout>
