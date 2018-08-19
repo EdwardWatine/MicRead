@@ -17,6 +17,9 @@ import com.jjoe64.graphview.GraphView;
 import com.jjoe64.graphview.GridLabelRenderer;
 import com.jjoe64.graphview.series.BarGraphSeries;
 import com.jjoe64.graphview.series.DataPoint;
+import com.jjoe64.graphview.series.DataPointInterface;
+import com.jjoe64.graphview.series.OnDataPointTapListener;
+import com.jjoe64.graphview.series.Series;
 
 import java.util.HashMap;
 
@@ -27,6 +30,8 @@ public class MainActivity extends AppCompatActivity {
                                                            //affected by background noise (works by magnitude)
     private final double INTER_NOTE_CONSTANT = 0.75; //checks by a factor of this on either side of the note (normally between 0.5 and 1)
                                                  //higher is less sensitive (mostly unaffected by background noise but can lead to ignoring note changes)
+    private final double LOWER_OCTAVE_MINIMUM = 2; //sees if the lower octave is this many times bigger than the average.
+                                                   //a higher number means more likely to choose the higher octave (usually not good)
     private final HashMap mymap = new HashMap(64, (float) 1);
     private int NOTE_RANGE = 64;
 
@@ -135,10 +140,10 @@ public class MainActivity extends AppCompatActivity {
                 double magnitude[] = new double[NOTE_RANGE]; //A1
                 double relativeFreq[] = new double[magnitude.length];
                 double relativeMag[] = new double[magnitude.length];
-                double freqList[] = new double[magnitude.length];
+                final double freqList[] = new double[magnitude.length];
                 double lastFreq = -1;
                 boolean graphInit = false;
-                BarGraphSeries<DataPoint> series = new BarGraphSeries<>(new DataPoint[0]);
+                BarGraphSeries<DataPoint> series = null;
 
                 String[] noteList = new String[] {"A", "A#/Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
 
@@ -213,6 +218,9 @@ public class MainActivity extends AppCompatActivity {
                                 newFreq = lastFreq;
                             }
                         }
+                        if (highest >= 12 && relativeMag[Math.max(0, highest-12)] >= average*LOWER_OCTAVE_MINIMUM){
+                            newFreq = freqList[highest-12];
+                        }
                         final double finalFreq = newFreq;
                         final String note = (String) mymap.get(newFreq);
                         //System.out.println(String.format("Frequency: %d Note: %s", newFreq, note));
@@ -241,6 +249,14 @@ public class MainActivity extends AppCompatActivity {
                             graphData[i] = new DataPoint(i, 0);
                         }
                         series = new BarGraphSeries<>(graphData);
+
+                        series.setOnDataPointTapListener(new OnDataPointTapListener() {
+                            @Override
+                            public void onTap(Series series, DataPointInterface dataPoint) {
+                                Toast.makeText(getApplicationContext(), "NOTE: "+mymap.get(freqList[(int) dataPoint.getX()]), Toast.LENGTH_SHORT).show();
+                            }
+                        });
+
                         graph.addSeries(series);
                         graph.getGridLabelRenderer().setGridStyle(GridLabelRenderer.GridStyle.NONE);
                         graph.getGridLabelRenderer().setVerticalLabelsVisible(false);
