@@ -223,7 +223,7 @@ public class MainActivity extends AppCompatActivity {
                         }
                         final double finalFreq = newFreq;
                         final String note = (String) mymap.get(newFreq);
-                        //System.out.println(String.format("Frequency: %d Note: %s", newFreq, note));
+                        //System.out.println(String.format("\nFrequency: %f Note: %s", newFreq, note));
                         runOnUiThread(new Runnable() {
 
                             @Override
